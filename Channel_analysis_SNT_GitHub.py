@@ -43,6 +43,7 @@ for file_name in glob.glob(path +'*.csv'):
 
     #threshold for local average intensity 
     threshold = 40
+    threshold_Ch2 = 30 #in my case Nav1.6  
     #number of pixels to consider in the local average
     numberpixels = 5
     
@@ -52,10 +53,11 @@ for file_name in glob.glob(path +'*.csv'):
     average_valuesCh2 = df.mean()[2]
     average_valuesCh3 = df.mean()[3]
     length = len(df.index)
-    startindex_Ch1 = 0
-    endindex_Ch1 = length-1
-    startindex_Ch2 = 0
-    endindex_Ch2 = length-1
+    startindex_Ch1 = None
+    endindex_Ch1 = None
+    startindex_Ch2 = None
+    endindex_Ch2 = None
+    
     # Normalizes the intensity data of each channel  
     normalized_df=(df-df.min())/(df.max()-df.min())
     
@@ -99,28 +101,60 @@ for file_name in glob.glob(path +'*.csv'):
             print('LocalAverageCh2:',LocalAverageCh2)
             print('average_valuesCh2:',average_valuesCh2)
             endindex_Ch2 = length-1-i
-            break
- # adding the information of distance between manually selected start point (Soma) to start of AIS (or any selected channel)               
-    SomaAISDistance = df['Distance'][startindex_Ch1]
+            break    
     
-# calculation of AIS length
-    AISLength = df['Distance'][endindex_Ch1] - df['Distance'][startindex_Ch1]
-    print('AISLength:', AISLength)
-
-#calculcation of Nav1.6 length
-    NaV1_6_Length = df['Distance'][endindex_Ch2] - df['Distance'][startindex_Ch2]
-    print('NaV1_6_Length:', NaV1_6_Length)
-
-
-#  repeat normalization of intensity (work around)  
-    normalized_df['Distance'] = df['Distance']
-    
+# Exclusion of further analysis + defining boundaries; in my case: AIS length
+  if not(startindex_Ch1 is None or endindex_Ch1 is None):
     AISSet = normalized_df[(normalized_df.index >= startindex_Ch1) & (normalized_df.index <= endindex_Ch1)]
     
-    normalized_AISSet=(AISSet-AISSet.min())/(AISSet.max()-AISSet.min())
+ # Create index list for length calculation of Nav1.6 within the AIS.   
+       for i in AISSet.index:
+            LocalSet= normalized_df[(normalized_df.index <= (i + numberpixels)) & (normalized_df.index >= i)]
+            LocalAverageCh2 = LocalSet['Ch2'].mean()
+            if LocalAverageCh2*100 > threshold_channel2:
+                startindex_Ch2 = i 
+                break
+                    indexlist = AISSet.index.tolist()
+        indexlist.reverse()         
+        for i in indexlist:
+            LocalSet = normalized_df[(normalized_df.index >= (i - numberpixels)) & (normalized_df.index <= i)]
+            LocalAverageCh2 = LocalSet['Ch2'].mean()
+            if LocalAverageCh2*100 > threshold_channel2:
+                endindex_Ch2 = i
+                break
+                
+# Calculation of Soma- AIS distance:
+    if startindex_Ch1 is None:
+        SomaAISDistance = None
+    else:
+         SomaAISDistance = df['Distance'][startindex_Ch1]
+                
+# calculation of AIS length; Exclusion of further analysis if AIS length is < 10 µm length
+    if startindex_Ch1 is None or endindex_Ch1 is None:
+        AISLength = None
+    else:
+     AISLength = df['Distance'][endindex_Ch1] - df['Distance'][startindex_Ch1]   
+     if AISLength <= 10:
+        AISLength = None
+
+#calculcation of Nav1.6 length
+  if startindex_Ch2 is None or endindex_Ch2 is None:
+        NaV1_6_Length = None
+    else:    
+        NaV1_6_Length = df['Distance'][endindex_Ch2] - df['Distance'][startindex_Ch2]
+        
+ # calculation of distance between AIS start and Nav1.6 start
+    if AISLength is None or NaV1_6_Length is None:  
+        AIS_Nav1_6_distance = None
+    else:   
+        AIS_Nav1_6_distance = df ['Distance'][startindex_Ch2] - df['Distance'][startindex_Ch1]
+        if startindex_Ch2 == endindex_Ch2:
+            AIS_Nav1_6_distance = None
+            print ('AIS_Nav1_6_distance', AIS_Nav1_6_distance)
+
+
     
     
-    AISSet['Distance'] = normalized_AISSet['Distance']
  
     
  
@@ -139,7 +173,7 @@ for file_name in glob.glob(path +'*.csv'):
     print (normalized_df_rounded)
     
     
-    
+ # creating csv file which contains all raw information of the channel analysis
     normalized_df_rounded.to_csv(path_or_buf=path_calculation, mode='a', header=firsttime)
  
      
@@ -149,7 +183,7 @@ for file_name in glob.glob(path +'*.csv'):
     with open(Aggregated_data, 'a', encoding="ISO-8859-1", newline='') as myfile:
           wr = csv.writer(myfile)
           if firsttime:
-              wr.writerow(("Celltype","startindex_Ch1","endindex_Ch1","startindex_Ch2","endindex_Ch2","AISlength","Channel_length"," SomaAISDistance", "path"))  
+              wr.writerow(("Celltype","startindex_Ch1","endindex_Ch1","startindex_Ch2","endindex_Ch2","AISlength","Channel_length"," SomaAISDistance","AIS_Nav_distance", "path"))  
           wr.writerow((celltype,
               startindex_Ch1,
             endindex_Ch1,
@@ -158,6 +192,7 @@ for file_name in glob.glob(path +'*.csv'):
             AISLength,
             NaV1_6_Length,
             SomaAISDistance,
+            AIS_Nav1_6_distance,
             path+file_name)
               )
 print(celltype)
